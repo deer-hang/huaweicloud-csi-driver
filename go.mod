@@ -7,7 +7,6 @@ require (
 	github.com/container-storage-interface/spec v1.5.0
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/kubernetes-csi/csi-lib-utils v0.9.1
-	github.com/mitchellh/go-homedir v1.1.0
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5

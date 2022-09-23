@@ -37,7 +37,7 @@ sfsturbo:
 .PHONY: sfsturbo-image
 sfsturbo-image:sfsturbo
 	cp ./sfsturbo-csi-plugin ./cmd/sfsturbo-csi-plugin
-	docker build cmd/sfsturbo-csi-plugin -t zhenguo/sfsturbo-csi-plugin:latest
+	docker build cmd/sfsturbo-csi-plugin -t deerhang/sfsturbo-csi-plugin:v1
 
 .PHONY: evs
 evs:
