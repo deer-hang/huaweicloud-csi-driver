@@ -18,10 +18,10 @@ package sfsturbo
 
 import (
 	"fmt"
+	"github.com/huaweicloud/huaweicloud-csi-driver/pkg/config"
 	"reflect"
 	"strconv"
 
-	"github.com/chnsz/golangsdk"
 	"github.com/chnsz/golangsdk/openstack/sfs_turbo/v1/shares"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/huaweicloud/huaweicloud-csi-driver/pkg/common"
@@ -55,10 +55,7 @@ const (
 func (cs *controllerServer) CreateVolume(_ context.Context, req *csi.CreateVolumeRequest) (
 	*csi.CreateVolumeResponse, error) {
 	log.Infof("CreateVolume called with request %v", protosanitizer.StripSecrets(*req))
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
+	cloud := cs.Driver.cloud
 
 	name := req.GetName()
 	capacityRange := req.GetCapacityRange()
@@ -106,7 +103,7 @@ func (cs *controllerServer) CreateVolume(_ context.Context, req *csi.CreateVolum
 	}
 	log.Infof("CreateVolume creating param: %v", protosanitizer.StripSecrets(createOpts))
 	// Check if there are any volumes with the same name
-	share, err := checkVolumeExists(client, createOpts)
+	share, err := checkVolumeExists(cloud, createOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +116,7 @@ func (cs *controllerServer) CreateVolume(_ context.Context, req *csi.CreateVolum
 		}
 		return buildCreateVolumeResponse(share.ID, int(size), req, accessibleTopology), nil
 	}
-	turboResponse, err := services.CreateShareCompleted(client, &createOpts)
+	turboResponse, err := services.CreateShareCompleted(cloud, &createOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +136,9 @@ func buildCreateVolumeResponse(shareID string, sizeInGiB int, req *csi.CreateVol
 	}
 }
 
-func checkVolumeExists(client *golangsdk.ServiceClient, createOpts shares.CreateOpts) (
+func checkVolumeExists(cloud *config.CloudCredentials, createOpts shares.CreateOpts) (
 	*shares.Turbo, error) {
-	turbos, err := services.ListTotalShares(client)
+	turbos, err := services.ListTotalShares(cloud)
 	if err != nil {
 		return nil, err
 	}
@@ -208,17 +205,14 @@ func createVolumeValidation(name string, capacityRange *csi.CapacityRange) error
 func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolumeRequest) (
 	*csi.DeleteVolumeResponse, error) {
 	log.Infof("DeleteVolume called with request %v", protosanitizer.StripSecrets(*req))
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
+	cloud := cs.Driver.cloud
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Validation failed, volume ID cannot be empty")
 	}
 
-	if err := services.DeleteShareCompleted(client, volumeID); err != nil {
+	if err := services.DeleteShareCompleted(cloud, volumeID); err != nil {
 		return nil, err
 	}
 	log.Infof("Successfully deleted volume %s", volumeID)
@@ -228,15 +222,12 @@ func (cs *controllerServer) DeleteVolume(_ context.Context, req *csi.DeleteVolum
 func (cs *controllerServer) ControllerGetVolume(_ context.Context, req *csi.ControllerGetVolumeRequest) (
 	*csi.ControllerGetVolumeResponse, error) {
 	log.Infof("ControllerGetVolume called with request %v", protosanitizer.StripSecrets(*req))
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
+	cloud := cs.Driver.cloud
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Validation failed, volume ID cannot be empty")
 	}
-	volume, err := services.GetShare(client, volumeID)
+	volume, err := services.GetShare(cloud, volumeID)
 	if err != nil {
 		if common.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "Volume %s not exist: %v", volumeID, err)
@@ -272,10 +263,7 @@ func (cs *controllerServer) ControllerUnpublishVolume(_ context.Context, _ *csi.
 func (cs *controllerServer) ListVolumes(_ context.Context, req *csi.ListVolumesRequest) (
 	*csi.ListVolumesResponse, error) {
 	log.Infof("ListVolumes called with request %v", protosanitizer.StripSecrets(*req))
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
+	cloud := cs.Driver.cloud
 
 	if req.GetMaxEntries() == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "Validation failed, maxEntries cannot be zero")
@@ -288,7 +276,7 @@ func (cs *controllerServer) ListVolumes(_ context.Context, req *csi.ListVolumesR
 		Limit:  int(req.GetMaxEntries()),
 		Offset: offset,
 	}
-	pageList, err := services.ListPageShares(client, opts)
+	pageList, err := services.ListPageShares(cloud, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -352,13 +340,9 @@ func (cs *controllerServer) ValidateVolumeCapabilities(_ context.Context, req *c
 	if len(volumeID) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "Validation failed, Volume ID cannot be empty")
 	}
+	cloud := cs.Driver.cloud
 
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
-
-	if _, err = services.GetShare(client, volumeID); err != nil {
+	if _, err := services.GetShare(cloud, volumeID); err != nil {
 		if common.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound,
 				"ValidateVolumeCapabiltites Volume: %s not fount, Error: %v", volumeID, err)
@@ -406,11 +390,8 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 			"Validation failed, expand required size %v exceeds the max size %v", sizeInGiB, maxSizeInGiB)
 	}
 
-	client, err := cs.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
-	volume, err := services.GetShare(client, volumeID)
+	cloud := cs.Driver.cloud
+	volume, err := services.GetShare(cloud, volumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +420,7 @@ func (cs *controllerServer) ControllerExpandVolume(_ context.Context, req *csi.C
 		}
 	}
 
-	if err = services.ExpandShareCompleted(client, volumeID, sizeInGiB); err != nil {
+	if err = services.ExpandShareCompleted(cloud, volumeID, sizeInGiB); err != nil {
 		return nil, err
 	}
 	log.Infof("Successfully resized volume %v to size %v", volumeID, sizeInGiB)

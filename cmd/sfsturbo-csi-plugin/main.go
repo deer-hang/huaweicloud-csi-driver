@@ -69,7 +69,7 @@ func main() {
 			// Make this configurable when ther are more options.
 			defaultShareProto := "NFS"
 			klog.V(3).Infof("run sfs turbo csi driver")
-			d := sfsturbo.NewDriver(nodeID, endpoint, defaultShareProto, *cloud)
+			d := sfsturbo.NewDriver(nodeID, endpoint, defaultShareProto, cloud)
 			mount := mounts.GetMountProvider()
 			metadata := metadatas.GetMetadataProvider(metadatas.MetadataID)
 			d.SetupDriver(mount, metadata)

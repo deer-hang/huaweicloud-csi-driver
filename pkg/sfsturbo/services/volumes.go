@@ -1,6 +1,7 @@
 package services
 
 import (
+	"github.com/huaweicloud/huaweicloud-csi-driver/pkg/config"
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"strconv"
@@ -25,14 +26,14 @@ const (
 	shareDescription = "provisioned-by=sfsturbo.csi.huaweicloud.org"
 )
 
-func CreateShareCompleted(client *golangsdk.ServiceClient, createOpts *shares.CreateOpts) (
+func CreateShareCompleted(c *config.CloudCredentials, createOpts *shares.CreateOpts) (
 	*shares.TurboResponse, error) {
-	turboResponse, err := CreateShare(client, createOpts)
+	turboResponse, err := CreateShare(c, createOpts)
 	if err != nil {
 		return nil, err
 	}
 	log.V(4).Infof("[DEBUG] create share response detail: %v", protosanitizer.StripSecrets(turboResponse))
-	err = WaitForShareAvailable(client, turboResponse.ID)
+	err = WaitForShareAvailable(c, turboResponse.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -45,10 +46,10 @@ const (
 	DefaultSteps     = 30
 )
 
-// WaitForShareAvailable create new share from sfs turbo.(it will cost few minutes)
-func WaitForShareAvailable(client *golangsdk.ServiceClient, shareID string) error {
+// WaitForShareAvailable will cost few minutes
+func WaitForShareAvailable(c *config.CloudCredentials, shareID string) error {
 	condition := func() (bool, error) {
-		share, err := GetShare(client, shareID)
+		share, err := GetShare(c, shareID)
 		if err != nil {
 			return false, status.Errorf(codes.Internal,
 				"Failed to query share %s when wait share available: %v", shareID, err)
@@ -60,7 +61,7 @@ func WaitForShareAvailable(client *golangsdk.ServiceClient, shareID string) erro
 		if share.Status == shareCreating {
 			return false, nil
 		}
-		return false, status.Error(codes.Internal, "created share status is not available")
+		return false, status.Errorf(codes.Internal, "created share status is not available : %s", share.Status)
 	}
 	backoff := wait.Backoff{
 		Duration: DefaultInitDelay,
@@ -70,8 +71,12 @@ func WaitForShareAvailable(client *golangsdk.ServiceClient, shareID string) erro
 	return wait.ExponentialBackoff(backoff, condition)
 }
 
-func CreateShare(client *golangsdk.ServiceClient, createOpts *shares.CreateOpts) (*shares.TurboResponse, error) {
+func CreateShare(c *config.CloudCredentials, createOpts *shares.CreateOpts) (*shares.TurboResponse, error) {
 	createOpts.Description = shareDescription
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return nil, err
+	}
 	share, err := shares.Create(client, createOpts).Extract()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to create share, err: %v", err)
@@ -79,29 +84,31 @@ func CreateShare(client *golangsdk.ServiceClient, createOpts *shares.CreateOpts)
 	return share, nil
 }
 
-func DeleteShareCompleted(client *golangsdk.ServiceClient, shareID string) error {
-	if _, err := GetShare(client, shareID); err != nil {
+func DeleteShareCompleted(c *config.CloudCredentials, shareID string) error {
+	if _, err := GetShare(c, shareID); err != nil {
 		if common.IsNotFound(err) {
-			log.V(4).Infof("[DEBUG] share %s not found, assuming it to be already deleted", shareID)
+			log.V(4).Infof("[DEBUG] share %s not found, it has already been deleted", shareID)
 			return nil
 		}
 		return status.Errorf(codes.Internal, "Failed to query volume %s, error: %v", shareID, err)
 	}
-	if err := DeleteShare(client, shareID); err != nil {
+	if err := DeleteShare(c, shareID); err != nil {
 		return status.Errorf(codes.Internal, "Failed to delete share, err: %v", err)
 	}
-	return WaitForShareDeleted(client, shareID)
+	return WaitForShareDeleted(c, shareID)
 }
 
-func DeleteShare(client *golangsdk.ServiceClient, shareID string) error {
+func DeleteShare(c *config.CloudCredentials, shareID string) error {
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return err
+	}
 	return shares.Delete(client, shareID).ExtractErr()
-
 }
 
-// WaitForShareDeleted delete share from sfs
-func WaitForShareDeleted(client *golangsdk.ServiceClient, shareID string) error {
+func WaitForShareDeleted(c *config.CloudCredentials, shareID string) error {
 	return common.WaitForCompleted(func() (bool, error) {
-		if _, err := GetShare(client, shareID); err != nil {
+		if _, err := GetShare(c, shareID); err != nil {
 			if common.IsNotFound(err) {
 				// resource not exist
 				return true, nil
@@ -113,11 +120,20 @@ func WaitForShareDeleted(client *golangsdk.ServiceClient, shareID string) error 
 	})
 }
 
-func GetShare(client *golangsdk.ServiceClient, shareID string) (*shares.Turbo, error) {
+func GetShare(c *config.CloudCredentials, shareID string) (*shares.Turbo, error) {
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return nil, err
+	}
 	return shares.Get(client, shareID).Extract()
 }
 
-func ListTotalShares(client *golangsdk.ServiceClient) ([]shares.Turbo, error) {
+func ListTotalShares(c *config.CloudCredentials) ([]shares.Turbo, error) {
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return nil, err
+	}
+
 	page, err := shares.List(client)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to query list total shares: %v", err)
@@ -125,7 +141,12 @@ func ListTotalShares(client *golangsdk.ServiceClient) ([]shares.Turbo, error) {
 	return page, nil
 }
 
-func ListPageShares(client *golangsdk.ServiceClient, opts shares.ListOpts) (*shares.PagedList, error) {
+func ListPageShares(c *config.CloudCredentials, opts shares.ListOpts) (*shares.PagedList, error) {
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return nil, err
+	}
+
 	pageList, err := shares.ListPage(client, opts)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to query list page shares: %v", err)
@@ -134,14 +155,14 @@ func ListPageShares(client *golangsdk.ServiceClient, opts shares.ListOpts) (*sha
 	return pageList, nil
 }
 
-func ExpandShareCompleted(client *golangsdk.ServiceClient, id string, newSize int) error {
-	if err := ExpandShare(client, id, newSize); err != nil {
+func ExpandShareCompleted(c *config.CloudCredentials, id string, newSize int) error {
+	if err := ExpandShare(c, id, newSize); err != nil {
 		return err
 	}
-	if err := WaitForShareExpanded(client, id); err != nil {
+	if err := WaitForShareExpanded(c, id); err != nil {
 		return err
 	}
-	share, err := GetShare(client, id)
+	share, err := GetShare(c, id)
 	if err != nil {
 		return err
 	}
@@ -155,7 +176,12 @@ func ExpandShareCompleted(client *golangsdk.ServiceClient, id string, newSize in
 	return nil
 }
 
-func ExpandShare(client *golangsdk.ServiceClient, id string, newSize int) error {
+func ExpandShare(c *config.CloudCredentials, id string, newSize int) error {
+	client, err := getSFSTurboV1Client(c)
+	if err != nil {
+		return err
+	}
+
 	opt := shares.ExpandOpts{
 		Extend: shares.ExtendOpts{
 			NewSize: newSize,
@@ -170,10 +196,9 @@ func ExpandShare(client *golangsdk.ServiceClient, id string, newSize int) error 
 	return nil
 }
 
-// WaitForShareExpanded delete share from sfs
-func WaitForShareExpanded(client *golangsdk.ServiceClient, shareID string) error {
+func WaitForShareExpanded(c *config.CloudCredentials, shareID string) error {
 	return common.WaitForCompleted(func() (bool, error) {
-		share, err := GetShare(client, shareID)
+		share, err := GetShare(c, shareID)
 		if err != nil {
 			return false, status.Errorf(codes.Internal,
 				"Failed to query share %s when wait share expand: %v", shareID, err)
@@ -190,4 +215,12 @@ func WaitForShareExpanded(client *golangsdk.ServiceClient, shareID string) error
 		}
 		return false, status.Error(codes.Internal, "expand share sub status is not success")
 	})
+}
+
+func getSFSTurboV1Client(c *config.CloudCredentials) (*golangsdk.ServiceClient, error) {
+	client, err := c.SFSTurboV1Client()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed create SFS Turbo V1 client: %s", err)
+	}
+	return client, nil
 }

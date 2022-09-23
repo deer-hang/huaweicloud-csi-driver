@@ -44,7 +44,7 @@ type SfsTurboDriver struct {
 	version    string
 	endpoint   string
 	shareProto string
-	cloud      config.CloudCredentials
+	cloud      *config.CloudCredentials
 
 	ids *identityServer
 	cs  *controllerServer
@@ -55,7 +55,7 @@ type SfsTurboDriver struct {
 	nscap []*csi.NodeServiceCapability
 }
 
-func NewDriver(nodeID, endpoint, shareProto string, cloud config.CloudCredentials) *SfsTurboDriver {
+func NewDriver(nodeID, endpoint, shareProto string, cloud *config.CloudCredentials) *SfsTurboDriver {
 	klog.Infof("Driver: %v version: %v", driverName, version)
 
 	d := &SfsTurboDriver{}
