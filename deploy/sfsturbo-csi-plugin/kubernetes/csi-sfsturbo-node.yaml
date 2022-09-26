@@ -51,7 +51,7 @@ spec:
             - name: registration-dir
               mountPath: /registration
         - name: sfsturbo
-          image: docker.io/deerhang/sfsturbo-csi-plugin:v1
+          image: zhenguo/sfsturbo-csi-plugin:latest
           args:
             - "--v=2"
             - "--logtostderr"
