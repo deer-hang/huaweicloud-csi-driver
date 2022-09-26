@@ -42,13 +42,15 @@ type nodeServer struct {
 	Metadata metadatas.IMetadata
 }
 
-func (ns *nodeServer) NodeStageVolume(_ context.Context, _ *csi.NodeStageVolumeRequest) (
+func (ns *nodeServer) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (
 	*csi.NodeStageVolumeResponse, error) {
+	log.Infof("NodeStageVolume: called with args %v", protosanitizer.StripSecrets(*req))
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (ns *nodeServer) NodeUnstageVolume(_ context.Context, _ *csi.NodeUnstageVolumeRequest) (
+func (ns *nodeServer) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolumeRequest) (
 	*csi.NodeUnstageVolumeResponse, error) {
+	log.Infof("NodeStageVolume: called with args %v", protosanitizer.StripSecrets(*req))
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
@@ -62,12 +64,8 @@ func (ns *nodeServer) NodePublishVolume(_ context.Context, req *csi.NodePublishV
 		return nil, err
 	}
 
-	client, err := ns.Driver.cloud.SFSTurboV1Client()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create SFS Turbo v1 client: %v", err)
-	}
-
-	share, err := services.GetShare(client, volumeID)
+	cloud := ns.Driver.cloud
+	share, err := services.GetShare(cloud, volumeID)
 	if err != nil {
 		if common.IsNotFound(err) {
 			return nil, status.Errorf(codes.NotFound, "Share %s has already been deleted.", volumeID)
@@ -152,6 +150,7 @@ func (ns *nodeServer) NodeGetInfo(_ context.Context, req *csi.NodeGetInfoRequest
 		return nil, status.Errorf(codes.Internal, "Unable to retrieve availability zone of node %v", err)
 	}
 	topology := &csi.Topology{Segments: map[string]string{topologyKey: zone}}
+	log.Infof("NodeGetInfo nodeID: %s, topology: %s", nodeID, protosanitizer.StripSecrets(*topology))
 	return &csi.NodeGetInfoResponse{
 		NodeId:             nodeID,
 		AccessibleTopology: topology,
@@ -230,7 +229,7 @@ func nodeGetStatsValidation(volumeID, volumePath string) error {
 }
 
 // NodeExpandVolume node expand volume
-func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
+func (ns *nodeServer) NodeExpandVolume(_ context.Context, _ *csi.NodeExpandVolumeRequest) (
 	*csi.NodeExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
