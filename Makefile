@@ -21,9 +21,9 @@ export GOBIN   ?=$(GOPATH)/bin
 
 # Images management
 REGISTRY_SERVER   ?=swr.cn-north-4.myhuaweicloud.com
-REGISTRY          ?=$(REGISTRY_SERVER)/k8s-csi
-REGISTRY_USERNAME ?=
-REGISTRY_PASSWORD ?=
+REGISTRY          ?=deerhang
+REGISTRY_USERNAME ?=deerhang
+REGISTRY_PASSWORD ?=luxiaohu666!
 
 SOURCES := $(shell find . -name '*.go' 2>/dev/null)
 VERSION ?= $(shell git describe --dirty --tags --match='v*')
